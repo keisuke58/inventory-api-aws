@@ -1,0 +1,14 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*.sqlite3
+inventory.db
+# venv
+.venv/
+# Front-end
+inventory-dashboard/node_modules/
+inventory-dashboard/dist/
+# macOS files
+.DS_Store
+
