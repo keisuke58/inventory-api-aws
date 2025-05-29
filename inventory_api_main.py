@@ -1,7 +1,4 @@
-# inventory_api_main.py
 """A minimal inventory management REST API (v1) using Flask + SQLite.
-
-# /Users/nishiokakeisuke/work/AWS/inventory_api_main.py
 
 Implements five endpoints:
 1. POST   /v1/stocks        – create or add stock for a product
@@ -10,12 +7,11 @@ Implements five endpoints:
 4. GET    /v1/sales         – check accumulated sales since last reset
 5. DELETE /v1/stocks        – delete *all* stocks and sales (reset)
 
-All request/response bodies are JSON．Input is strictly validated and errors
-return {"message": "ERROR"} with HTTP 400．
+All request/response bodies are JSON. Input is strictly validated and errors
+return {"message": "ERROR"} with HTTP 400.
 """
 from __future__ import annotations
 
-import math
 import re
 import sqlite3
 from contextlib import closing
@@ -33,36 +29,35 @@ NAME_PATTERN = re.compile(r"^[A-Za-z]{1,8}$")  # 1–8 alphabetic chars (ASCII)
 # DB helpers                                                                  #
 ###############################################################################
 
+
 def init_db() -> None:
-    """Create tables on first run and ensure a single sales row exists．"""
+    """Create tables on first run and ensure a single sales row exists."""
     with sqlite3.connect(DB_PATH) as conn:
-        cur = conn.cursor()
-        cur.execute(
+        cursor = conn.cursor()
+        cursor.execute(
             """CREATE TABLE IF NOT EXISTS stocks (
                    name   TEXT PRIMARY KEY,
                    amount INTEGER NOT NULL CHECK(amount >= 0)
                )"""
         )
-        cur.execute(
+        cursor.execute(
             """CREATE TABLE IF NOT EXISTS sales (
                    id    INTEGER PRIMARY KEY CHECK (id = 1),
                    total REAL NOT NULL
                )"""
         )
-        cur.execute("INSERT OR IGNORE INTO sales (id, total) VALUES (1, 0)")
+        cursor.execute(
+            """CREATE TABLE IF NOT EXISTS logs (
+                   id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                   name      TEXT,
+                   action    TEXT CHECK(action IN ('add','sale')),
+                   amount    INTEGER,
+                   timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+               )"""
+        )
+        cursor.execute("INSERT OR IGNORE INTO sales (id, total) VALUES (1, 0)")
         conn.commit()
-        
-        
-# ---- in init_db() 直後 ------------
-cur.execute(
-    """CREATE TABLE IF NOT EXISTS logs (
-           id        INTEGER PRIMARY KEY AUTOINCREMENT,
-           name      TEXT,
-           action    TEXT CHECK(action IN ('add','sale')),
-           amount    INTEGER,
-           timestamp TEXT DEFAULT CURRENT_TIMESTAMP
-       )"""
-)
+
 
 def log_event(name: str, action: str, amount: int) -> None:
     exec_sql(
@@ -93,6 +88,7 @@ def query_all(sql: str, params: Tuple | Dict[str, Any] = ()) -> list[Tuple[Any, 
 # Utility                                                                     #
 ###############################################################################
 
+
 def validate_name(name: Any) -> str | None:
     if isinstance(name, str) and NAME_PATTERN.fullmatch(name):
         return name
@@ -118,13 +114,15 @@ def error_response():
 
 
 def ceil_two_decimals(x: float) -> float:
-    d = Decimal(str(x)).quantize(Decimal("0.01"), rounding=ROUND_UP)
-    return float(d)
+    return float(
+        Decimal(str(x)).quantize(Decimal("0.01"), rounding=ROUND_UP)
+    )
 
 
 ###############################################################################
 # Endpoints                                                                   #
 ###############################################################################
+
 
 @app.route("/v1/stocks", methods=["POST"])
 def add_stock():
@@ -137,16 +135,16 @@ def add_stock():
     # upsert to stocks table
     existing = query_one("SELECT amount FROM stocks WHERE name = ?", (name,))
     if existing:
-        exec_sql("UPDATE stocks SET amount = amount + ? WHERE name = ?", (amount, name))
+        exec_sql(
+            "UPDATE stocks SET amount = amount + ? WHERE name = ?", (amount, name)
+        )
     else:
         exec_sql("INSERT INTO stocks (name, amount) VALUES (?, ?)", (name, amount))
 
+    log_event(name, "add", amount)
+
     location = url_for("get_stock", name=name, _external=True)
-    return (
-        jsonify({"name": name, "amount": amount}),
-        200,
-        {"Location": location},
-    )
+    return jsonify({"name": name, "amount": amount}), 200, {"Location": location}
 
 
 @app.route("/v1/stocks", methods=["GET"])
@@ -161,7 +159,9 @@ def get_stock(name: str | None = None):
         return jsonify({valid_name: amount})
 
     # no name: list all with amount > 0 sorted by name
-    rows = query_all("SELECT name, amount FROM stocks WHERE amount > 0 ORDER BY name ASC")
+    rows = query_all(
+        "SELECT name, amount FROM stocks WHERE amount > 0 ORDER BY name ASC"
+    )
     return jsonify({r[0]: r[1] for r in rows})
 
 
@@ -189,12 +189,10 @@ def create_sale():
         increment = price * amount
         exec_sql("UPDATE sales SET total = total + ? WHERE id = 1", (increment,))
 
+    log_event(name, "sale", amount)
+
     location = url_for("create_sale", name=name, _external=True)
-    return (
-        jsonify({"name": name, "amount": amount}),
-        200,
-        {"Location": location},
-    )
+    return jsonify({"name": name, "amount": amount}), 200, {"Location": location}
 
 
 @app.route("/v1/sales", methods=["GET"])
@@ -208,6 +206,7 @@ def get_sales():
 def reset():
     exec_sql("DELETE FROM stocks")
     exec_sql("UPDATE sales SET total = 0 WHERE id = 1")
+    exec_sql("DELETE FROM logs")
     return "", 204  # No Content
 
 
