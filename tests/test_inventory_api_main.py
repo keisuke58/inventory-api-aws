@@ -1,8 +1,15 @@
+import sys
+import os
+# Add project root to sys.path, so pytest can import inventory_api_main
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import pytest
-from inventory_api_main import app
+from inventory_api_main import app, init_db
 
 @pytest.fixture(autouse=True)
 def client():
+    # Initialize database schema and ensure clean state before each test
+    init_db()
     # Ensure clean state before each test
     with app.test_client() as client:
         client.delete("/v1/stocks")  # resets stocks, sales, and logs
