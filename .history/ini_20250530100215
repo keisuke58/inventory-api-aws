@@ -1,0 +1,6 @@
+# pytest.ini
+[pytest]
+testpaths = tests
+python_files = test_*.py
+# プロジェクトルートをモジュール検索パスに追加
+addopts = --rootdir=.
