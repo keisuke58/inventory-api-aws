@@ -12,3 +12,8 @@ inventory-dashboard/dist/
 # macOS files
 .DS_Store
 
+# 作業履歴フォルダ
+.history/
+
+# Node.js モジュール
+node_modules/
